@@ -1,0 +1,21 @@
+# 构建目录
+build
+build2
+
+# 文件系统解耦
+env.cmake
+
+# VS Code
+.vscode
+
+# Qt Creator
+**/*.user
+**/*.res
+**/*.autosave
+**/.qt_for_python/
+**/build-**/
+
+# Visual Studio
+.vs
+out
+CMakeSettings.json
