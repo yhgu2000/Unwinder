@@ -69,10 +69,11 @@ catch (Err& e) {
 }
 
 catch (std::exception& e) {
-  std::cout << "\nERROR! " << e.what() << std::endl;
+  std::cout << "\nSTD ERROR! " << e.what() << std::endl;
   return -2;
 }
 
 catch (...) {
+  std::cout << "\nUNKNOWN ERROR!" << std::endl;
   return -1;
 }

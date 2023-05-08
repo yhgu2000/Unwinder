@@ -84,7 +84,7 @@ IndentPrint::operator()(const json::value& jv)
 std::ostream&
 IndentPrint::prefix()
 {
-  for (auto i = 0u; i < _indent; ++i)
+  for (auto i = 0U; i < _indent; ++i)
     _os.put(' ');
   return _os;
 }

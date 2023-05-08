@@ -10,6 +10,19 @@
 
 namespace Unwinder {
 
+static std::string
+jsonify(const std::vector<std::uint8_t>& bytes)
+{
+  const char kHexDigit[] = "0123456789ABCDEF";
+
+  std::string ret;
+  ret.reserve(bytes.size() * 2);
+  for (auto&& b : bytes)
+    ret.push_back(kHexDigit[b >> 4]), ret.push_back(kHexDigit[b & 0x0F]);
+
+  return ret;
+}
+
 static json::object
 jsonify(const ADDRESS64& data, HANDLE process)
 {
@@ -106,7 +119,7 @@ jsonify(const STACKFRAME64& data, HANDLE process)
   return obj;
 }
 
-static json::array
+static json::object
 unwind_thread(HANDLE process, unsigned int tid)
 {
   HandleGuard thread =
@@ -117,6 +130,7 @@ unwind_thread(HANDLE process, unsigned int tid)
   context.ContextFlags = CONTEXT_FULL;
   if (!GetThreadContext(thread, &context))
     throw err::WinErr(GetLastError());
+  // context.Rsp 好像是栈底帧的栈指针，而不是栈顶的（奇怪！）
 
   STACKFRAME64 stackframe;
   zerolize(stackframe);
@@ -127,8 +141,7 @@ unwind_thread(HANDLE process, unsigned int tid)
   stackframe.AddrStack.Mode = AddrModeFlat;
   stackframe.AddrStack.Offset = context.Rsp;
 
-  json::array ret;
-
+  json::array frames;
   while (StackWalk64(IMAGE_FILE_MACHINE_AMD64,
                      process,
                      thread,
@@ -138,9 +151,39 @@ unwind_thread(HANDLE process, unsigned int tid)
                      SymFunctionTableAccess64,
                      SymGetModuleBase64,
                      NULL))
-    ret.push_back(jsonify(stackframe, process));
+    frames.push_back(jsonify(stackframe, process));
 
-  return ret;
+  MEMORY_BASIC_INFORMATION stackInfo;
+  zerolize(stackInfo);
+  if (!VirtualQueryEx(process,
+                      reinterpret_cast<LPCVOID>(context.Rsp),
+                      &stackInfo,
+                      sizeof(stackInfo)))
+    throw err::WinErr(GetLastError());
+  DWORD64 top =
+    frames[0].get_object()["Stack"].get_object()["Offset"].as_uint64();
+  DWORD64 bottom =
+    reinterpret_cast<DWORD64>(stackInfo.BaseAddress) + stackInfo.RegionSize;
+  assert(top <= bottom);
+
+  std::vector<std::uint8_t> data;
+  data.resize(bottom - top);
+  SIZE_T size;
+  if (!ReadProcessMemory(process,
+                         reinterpret_cast<LPCVOID>(top),
+                         data.data(),
+                         bottom - top,
+                         &size))
+    throw err::WinErr(GetLastError());
+  data.resize(size);
+
+  json::object obj;
+  obj["frames"] = std::move(frames);
+  obj["top"] = top;
+  obj["bottom"] = bottom;
+  obj["data"] = jsonify(data);
+
+  return obj;
 }
 
 json::value
